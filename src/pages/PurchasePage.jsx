@@ -9,13 +9,12 @@ function PurchasePage() {
     const [orderType, setOrderType] = useState("market");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errors, setErrors] = useState({});
-    const { symbol } = useParams();
+    const { id } = useParams();
 
     useEffect(() => {
-        console.log('Stock symbol:', symbol);
         const fetchStockData = async () => {
             try {
-                const response = await fetch(`http://localhost:8080/v1/stocks/${symbol}`);
+                const response = await fetch(`http://localhost:8080/v1/beverages/${id}`);
 
                 if (!response.ok) {
                     throw new Error(`Failed to fetch stock data: ${response.status}`);
@@ -30,7 +29,7 @@ function PurchasePage() {
             }
         };
         fetchStockData();
-    }, [symbol]);
+    }, [id]);
 
     const handleBack = () => {
         navigate("/stocks");
