@@ -11,6 +11,10 @@ function StocksPage() {
     navigate("/");
   };
 
+  const handleStockClick = (symbol) => {
+    navigate(`/purchase/${symbol}`);
+  };
+
   useEffect(() => {
     fetch("http://localhost:8080/v1/stocks")
       .then(res => res.json())
@@ -115,7 +119,7 @@ function StocksPage() {
             <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 mb-2">
               Live Stocks
             </h1>
-            <p className="text-white/70 text-lg">Real-time market data • Sorted by price</p>
+            <p className="text-white/70 text-lg">Real-time market data • Click to buy</p>
           </div>
         </div>
 
@@ -192,6 +196,9 @@ function StocksPage() {
                       </svg>
                     </div>
                   </th>
+                  <th className="text-center py-6 px-8 text-white/90 font-semibold text-sm uppercase tracking-wider">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -239,11 +246,24 @@ function StocksPage() {
                         <span>Live</span>
                       </div>
                     </td>
+                    <td className="py-6 px-8 text-center">
+                      <button
+                        onClick={() => handleStockClick(stock.symbol)}
+                        className="group relative bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-110 hover:shadow-lg hover:shadow-emerald-500/25"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                          <span>Buy</span>
+                        </div>
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {stocks.length === 0 && (
                   <tr>
-                    <td colSpan="3" className="text-center py-16">
+                    <td colSpan="4" className="text-center py-16">
                       <div className="flex flex-col items-center space-y-4">
                         <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center">
                           <svg className="w-8 h-8 text-white/60 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -267,7 +287,7 @@ function StocksPage() {
         {/* Footer */}
         <div className="mt-8 text-center">
           <p className="text-white/50 text-sm">
-            Real-time data • Updated live via WebSocket • {new Date().toLocaleString()}
+            Real-time data • Updated live via WebSocket • Click any stock to purchase • {new Date().toLocaleString()}
           </p>
         </div>
       </div>
