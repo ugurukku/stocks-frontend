@@ -74,7 +74,7 @@ function MainPage() {
           <div className="group relative">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-3xl blur opacity-30 group-hover:opacity-60 transition duration-300"></div>
             <button
-              onClick={() => navigate("/stocks")}
+              onClick={() => navigate("/beverages")}
               className="hover:cursor-pointer relative w-full bg-white/10 backdrop-blur-xl rounded-3xl p-8 border border-white/20 hover:bg-white/15 transition-all duration-300 transform hover:scale-105 hover:-translate-y-2"
             >
               <div className="flex items-center space-x-6">
@@ -91,38 +91,6 @@ function MainPage() {
                   <div className="flex items-center space-x-2 mt-4">
                     <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
                     <span className="text-emerald-400 text-sm font-medium">Live Data</span>
-                  </div>
-                </div>
-                <div className="text-white/40 group-hover:text-white/80 group-hover:translate-x-2 transition-all duration-300">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </button>
-          </div>
-
-          {/* Orders Card */}
-          <div className="group relative">
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-600 rounded-3xl blur opacity-30 group-hover:opacity-60 transition duration-300"></div>
-            <button
-              onClick={() => navigate("/order")}
-              className="hover:cursor-pointer relative w-full bg-white/10 backdrop-blur-xl rounded-3xl p-8 border border-white/20 hover:bg-white/15 transition-all duration-300 transform hover:scale-105 hover:-translate-y-2"
-            >
-              <div className="flex items-center space-x-6">
-                <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center flex-shrink-0">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div className="text-left flex-1">
-                  <h3 className="text-2xl font-bold text-white mb-2">Create Order</h3>
-                  <p className="text-white/70 text-base">
-                    Place new trading orders with advanced options and smart execution strategies
-                  </p>
-                  <div className="flex items-center space-x-2 mt-4">
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
-                    <span className="text-purple-400 text-sm font-medium">Smart Trading</span>
                   </div>
                 </div>
                 <div className="text-white/40 group-hover:text-white/80 group-hover:translate-x-2 transition-all duration-300">
