@@ -15,52 +15,65 @@ function BeveragesPage() {
     navigate(`/${id}/purchase`);
   };
 
-  useEffect(() => {
-    fetch("http://localhost:8080/v1/beverages")
-      .then(res => res.json())
-      .then(data => {
-        // Sort by price descending when initially fetching
-        const sortedData = data.sort((a, b) => b.price - a.price);
-        setBeers(sortedData);
-      })
-      .catch(err => console.error("Failed to fetch beers", err));
+useEffect(() => {
+  fetch("http://localhost:8080/v1/beverages")
+    .then(res => res.json())
+    .then(data => {
+      // Sort by price descending when initially fetching
+      const sortedData = data.sort((a, b) => b.price - a.price);
+      setBeers(sortedData);
+    })
+    .catch(err => console.error("Failed to fetch beers", err));
 
-    const client = new Client({
-      brokerURL: "ws://localhost:8080/ws",
-      reconnectDelay: 5000,
-      onConnect: () => {
-        console.log("STOMP connected");
-        setConnectionStatus('connected');
-        client.subscribe("/topic/beers", (message) => {
-          const updatedBeer = JSON.parse(message.body);
-          setBeers(prevBeers => {
-            const index = prevBeers.findIndex(b => b.name === updatedBeer.name);
-            let updatedBeers;
-            
-            if (index !== -1) {
-              updatedBeers = [...prevBeers];
-              updatedBeers[index] = updatedBeer;
-            } else {
-              updatedBeers = [...prevBeers, updatedBeer];
-            }
-            
-            // Sort by price descending after each update
-            return updatedBeers.sort((a, b) => b.price - a.price);
-          });
+  const client = new Client({
+    brokerURL: "ws://localhost:8080/ws",
+    reconnectDelay: 5000,
+    onConnect: () => {
+      console.log("STOMP connected");
+      setConnectionStatus('connected');
+      client.subscribe("/topic/beers", (message) => {
+        const updatedBeer = JSON.parse(message.body);
+        setBeers(prevBeers => {
+          const index = prevBeers.findIndex(b => 
+            (b.id && b.id === updatedBeer.id) || 
+            (b.symbol && b.symbol === updatedBeer.symbol) ||
+            (b.name && b.name === updatedBeer.name)
+          );
+          let updatedBeers;
+          
+          if (index !== -1) {
+            // Update existing beer
+            updatedBeers = [...prevBeers];
+            updatedBeers[index] = { ...updatedBeers[index], ...updatedBeer };
+          } else {
+            // Add new beer
+            updatedBeers = [...prevBeers, updatedBeer];
+          }
+          
+          // Sort by price descending after each update
+          return updatedBeers.sort((a, b) => b.price - a.price);
         });
-      },
-      onStompError: (frame) => {
-        console.error("Broker error", frame.headers["message"]);
-        setConnectionStatus('error');
-      },
-    });
+      });
+    },
+    onStompError: (frame) => {
+      console.error("Broker error", frame.headers["message"]);
+      setConnectionStatus('error');
+    },
+    onDisconnect: () => {
+      console.log("STOMP disconnected");
+      setConnectionStatus('connecting');
+    },
+  });
 
-    client.activate();
+  client.activate();
 
-    return () => {
-      client.deactivate();
-    };
-  }, []);
+  return () => {
+    client.deactivate();
+  };
+}, []);
+
+const averagePrice = beers.length > 0 ? beers.reduce((sum, beer) => sum + beer.price, 0) / beers.length : 0;
+const maxPrice = beers.length > 0 ? Math.max(...beers.map(b => b.price)) : 0;
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('en-US', {
@@ -154,7 +167,7 @@ function BeveragesPage() {
               <div>
                 <p className="text-orange-200 text-sm font-medium">Average Price</p>
                 <p className="text-orange-100 text-3xl font-bold">
-                  {beers.length > 0 ? formatPrice(beers.reduce((sum, beer) => sum + beer.price, 0) / beers.length) : '$0.00'}
+                  {formatPrice(averagePrice)}
                 </p>
               </div>
               <div className="w-12 h-12 bg-orange-500/30 rounded-xl flex items-center justify-center text-2xl">
@@ -168,7 +181,7 @@ function BeveragesPage() {
               <div>
                 <p className="text-yellow-200 text-sm font-medium">Premium Brew</p>
                 <p className="text-yellow-100 text-3xl font-bold">
-                  {beers.length > 0 ? formatPrice(Math.max(...beers.map(b => b.price))) : '$0.00'}
+                  {formatPrice(maxPrice)}
                 </p>
               </div>
               <div className="w-12 h-12 bg-yellow-500/30 rounded-xl flex items-center justify-center text-2xl">
