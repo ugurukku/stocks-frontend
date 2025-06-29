@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Client } from "@stomp/stompjs";
 
 function BeveragesPage() {
   const [beers, setBeers] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [priceChanges, setPriceChanges] = useState({});
+  const [positionChanges, setPositionChanges] = useState({});
+  const previousPrices = useRef({});
+  const previousPositions = useRef({});
   const navigate = useNavigate();
 
   const handleBack = () => {
@@ -15,65 +19,133 @@ function BeveragesPage() {
     navigate(`/${id}/purchase`);
   };
 
-useEffect(() => {
-  fetch("http://localhost:8080/v1/beverages")
-    .then(res => res.json())
-    .then(data => {
-      // Sort by price descending when initially fetching
-      const sortedData = data.sort((a, b) => b.price - a.price);
-      setBeers(sortedData);
-    })
-    .catch(err => console.error("Failed to fetch beers", err));
+  useEffect(() => {
+    fetch("http://localhost:8080/v1/beverages")
+      .then(res => res.json())
+      .then(data => {
+        // Sort by price descending when initially fetching
+        const sortedData = data.sort((a, b) => b.price - a.price);
+        setBeers(sortedData);
+        // Initialize previous prices and positions
+        const initialPrices = {};
+        const initialPositions = {};
+        sortedData.forEach((beer, index) => {
+          const beerId = beer.id || beer.symbol;
+          initialPrices[beerId] = beer.price;
+          initialPositions[beerId] = index;
+        });
+        previousPrices.current = initialPrices;
+        previousPositions.current = initialPositions;
+      })
+      .catch(err => console.error("Failed to fetch beers", err));
 
-  const client = new Client({
-    brokerURL: "ws://localhost:8080/ws",
-    reconnectDelay: 5000,
-    onConnect: () => {
-      console.log("STOMP connected");
-      setConnectionStatus('connected');
-      client.subscribe("/topic/beverages", (message) => {
-        const updatedBeer = JSON.parse(message.body);
-        setBeers(prevBeers => {
-          const index = prevBeers.findIndex(b => 
-            (b.id && b.id === updatedBeer.id) || 
-            (b.symbol && b.symbol === updatedBeer.symbol) ||
-            (b.name && b.name === updatedBeer.name)
-          );
-          let updatedBeers;
+    const client = new Client({
+      brokerURL: "ws://localhost:8080/ws",
+      reconnectDelay: 5000,
+      onConnect: () => {
+        console.log("STOMP connected");
+        setConnectionStatus('connected');
+        client.subscribe("/topic/beverages", (message) => {
+          const updatedBeer = JSON.parse(message.body);
+          const beerId = updatedBeer.id || updatedBeer.symbol;
           
-          if (index !== -1) {
-            // Update existing beer
-            updatedBeers = [...prevBeers];
-            updatedBeers[index] = { ...updatedBeers[index], ...updatedBeer };
-          } else {
-            // Add new beer
-            updatedBeers = [...prevBeers, updatedBeer];
+          // Check for price change
+          const oldPrice = previousPrices.current[beerId];
+          const newPrice = updatedBeer.price;
+          
+          if (oldPrice !== undefined && oldPrice !== newPrice) {
+            setPriceChanges(prev => ({
+              ...prev,
+              [beerId]: {
+                direction: newPrice > oldPrice ? 'up' : 'down',
+                timestamp: Date.now()
+              }
+            }));
+            
+            // Clear the animation after 3 seconds
+            setTimeout(() => {
+              setPriceChanges(prev => {
+                const newChanges = { ...prev };
+                delete newChanges[beerId];
+                return newChanges;
+              });
+            }, 3000);
           }
           
-          // Sort by price descending after each update
-          return updatedBeers.sort((a, b) => b.price - a.price);
+          // Update previous price
+          previousPrices.current[beerId] = newPrice;
+          
+          setBeers(prevBeers => {
+            const index = prevBeers.findIndex(b => 
+              (b.id && b.id === updatedBeer.id) || 
+              (b.symbol && b.symbol === updatedBeer.symbol) ||
+              (b.name && b.name === updatedBeer.name)
+            );
+            let updatedBeers;
+            
+            if (index !== -1) {
+              // Update existing beer
+              updatedBeers = [...prevBeers];
+              updatedBeers[index] = { ...updatedBeers[index], ...updatedBeer };
+            } else {
+              // Add new beer
+              updatedBeers = [...prevBeers, updatedBeer];
+            }
+            
+            // Sort by price descending after each update
+            const sortedBeers = updatedBeers.sort((a, b) => b.price - a.price);
+            
+            // Track position changes
+            const newPositionChanges = {};
+            sortedBeers.forEach((beer, newIndex) => {
+              const beerId = beer.id || beer.symbol;
+              const oldPosition = previousPositions.current[beerId];
+              
+              if (oldPosition !== undefined && oldPosition !== newIndex) {
+                newPositionChanges[beerId] = {
+                  from: oldPosition,
+                  to: newIndex,
+                  direction: newIndex < oldPosition ? 'up' : 'down'
+                };
+              }
+              
+              // Update previous position
+              previousPositions.current[beerId] = newIndex;
+            });
+            
+            // Set position changes
+            if (Object.keys(newPositionChanges).length > 0) {
+              setPositionChanges(newPositionChanges);
+              
+              // Clear position changes after animation completes
+              setTimeout(() => {
+                setPositionChanges({});
+              }, 600);
+            }
+            
+            return sortedBeers;
+          });
         });
-      });
-    },
-    onStompError: (frame) => {
-      console.error("Broker error", frame.headers["message"]);
-      setConnectionStatus('error');
-    },
-    onDisconnect: () => {
-      console.log("STOMP disconnected");
-      setConnectionStatus('connecting');
-    },
-  });
+      },
+      onStompError: (frame) => {
+        console.error("Broker error", frame.headers["message"]);
+        setConnectionStatus('error');
+      },
+      onDisconnect: () => {
+        console.log("STOMP disconnected");
+        setConnectionStatus('connecting');
+      },
+    });
 
-  client.activate();
+    client.activate();
 
-  return () => {
-    client.deactivate();
-  };
-}, []);
+    return () => {
+      client.deactivate();
+    };
+  }, []);
 
-const averagePrice = beers.length > 0 ? beers.reduce((sum, beer) => sum + beer.price, 0) / beers.length : 0;
-const maxPrice = beers.length > 0 ? Math.max(...beers.map(b => b.price)) : 0;
+  const averagePrice = beers.length > 0 ? beers.reduce((sum, beer) => sum + beer.price, 0) / beers.length : 0;
+  const maxPrice = beers.length > 0 ? Math.max(...beers.map(b => b.price)) : 0;
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('en-US', {
@@ -221,66 +293,115 @@ const maxPrice = beers.length > 0 ? Math.max(...beers.map(b => b.price)) : 0;
                 </tr>
               </thead>
               <tbody className="divide-y divide-amber-400/10">
-                {beers.map((beer, index) => (
-                  <tr
-                    key={beer.id}
-                    className="group hover:bg-amber-500/10 transition-all duration-300 transform hover:scale-[1.01]"
-                  >
-                    <td className="py-6 px-8">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
-                          index === 0 ? 'bg-yellow-500 text-yellow-900' :
-                          index === 1 ? 'bg-gray-400 text-gray-900' :
-                          index === 2 ? 'bg-amber-600 text-amber-100' :
-                          'bg-amber-500/30 text-amber-100'
-                        }`}>
-                          {index + 1}
+                {beers.map((beer, index) => {
+                  const beerId = beer.id || beer.symbol;
+                  const priceChange = priceChanges[beerId];
+                  const positionChange = positionChanges[beerId];
+                  
+                  let animationStyle = {};
+                  if (positionChange) {
+                    const moveDistance = (positionChange.to - positionChange.from) * 88; // Approximate row height
+                    animationStyle = {
+                      transform: `translateY(${-moveDistance}px)`,
+                      transition: 'transform 0.6s ease-in-out',
+                      position: 'relative',
+                      zIndex: 10
+                    };
+                  }
+                  
+                  return (
+                    <tr
+                      key={beer.id}
+                      className={`group hover:bg-amber-500/10 transition-all duration-300 transform hover:scale-[1.01] ${
+                        positionChange ? 'bg-amber-500/20' : ''
+                      }`}
+                      style={animationStyle}
+                    >
+                      <td className="py-6 px-8">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm transition-all duration-300 ${
+                            index === 0 ? 'bg-yellow-500 text-yellow-900' :
+                            index === 1 ? 'bg-gray-400 text-gray-900' :
+                            index === 2 ? 'bg-amber-600 text-amber-100' :
+                            'bg-amber-500/30 text-amber-100'
+                          }`}>
+                            {index + 1}
+                          </div>
+                          {index < 3 && (
+                            <span className="text-2xl">
+                              {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
+                            </span>
+                          )}
+                          {positionChange && (
+                            <div className={`ml-2 flex items-center text-sm font-medium ${
+                              positionChange.direction === 'up' ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              <svg 
+                                className={`w-4 h-4 ${positionChange.direction === 'down' ? 'rotate-180' : ''}`} 
+                                fill="currentColor" 
+                                viewBox="0 0 20 20"
+                              >
+                                <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                              </svg>
+                              <span>{Math.abs(positionChange.to - positionChange.from)}</span>
+                            </div>
+                          )}
                         </div>
-                        {index < 3 && (
-                          <span className="text-2xl">
-                            {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-6 px-8">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-12 h-12 bg-gradient-to-r from-amber-400 to-orange-500 rounded-xl flex items-center justify-center text-2xl">
-                          {getBeerIcon(index)}
+                      </td>
+                      <td className="py-6 px-8">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-12 h-12 bg-gradient-to-r from-amber-400 to-orange-500 rounded-xl flex items-center justify-center text-2xl">
+                            {getBeerIcon(index)}
+                          </div>
+                          <div>
+                            <div className="text-amber-100 font-semibold text-lg">{beer.name || beer.symbol}</div>
+                            <div className="text-amber-200/70 text-sm">Fresh from tap</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-amber-100 font-semibold text-lg">{beer.name || beer.symbol}</div>
-                          <div className="text-amber-200/70 text-sm">Fresh from tap</div>
+                      </td>
+                      <td className="py-6 px-8 text-center">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-200 border border-amber-400/30">
+                          {getBeerType(beer.name || beer.symbol)}
+                        </span>
+                      </td>
+                      <td className="py-6 px-8 text-right">
+                        <div className="relative">
+                          <div className="text-amber-100 font-mono text-xl font-bold flex items-center justify-end space-x-2">
+                            <span>{formatPrice(beer.price)}</span>
+                            {priceChange && (
+                              <div className={`flex items-center animate-bounce ${
+                                priceChange.direction === 'up' ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                <svg 
+                                  className={`w-5 h-5 ${priceChange.direction === 'down' ? 'rotate-180' : ''}`} 
+                                  fill="currentColor" 
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-green-400 text-sm flex items-center justify-end space-x-1 mt-1">
+                            <span>✨</span>
+                            <span>Fresh</span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-6 px-8 text-center">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-200 border border-amber-400/30">
-                        {getBeerType(beer.name || beer.symbol)}
-                      </span>
-                    </td>
-                    <td className="py-6 px-8 text-right">
-                      <div className="text-amber-100 font-mono text-xl font-bold">
-                        {formatPrice(beer.price)}
-                      </div>
-                      <div className="text-green-400 text-sm flex items-center justify-end space-x-1 mt-1">
-                        <span>✨</span>
-                        <span>Fresh</span>
-                      </div>
-                    </td>
-                    <td className="py-6 px-8 text-center">
-                      <button
-                        onClick={() => handleBeverageClick(beer.id || beer.symbol)}
-                        className="group relative bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-110 hover:shadow-lg hover:shadow-amber-500/25"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <span>🛒</span>
-                          <span>Order</span>
-                        </div>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-6 px-8 text-center">
+                        <button
+                          onClick={() => handleBeverageClick(beer.id || beer.symbol)}
+                          className="group relative bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-110 hover:shadow-lg hover:shadow-amber-500/25"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <span>🛒</span>
+                            <span>Order</span>
+                          </div>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {beers.length === 0 && (
                   <tr>
                     <td colSpan="5" className="text-center py-16">
@@ -315,6 +436,38 @@ const maxPrice = beers.length > 0 ? Math.max(...beers.map(b => b.price)) : 0;
           </p>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes bounce {
+          0%, 100% {
+            transform: translateY(-25%);
+            animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+          }
+          50% {
+            transform: translateY(0);
+            animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+          }
+        }
+        @keyframes slideIn {
+          0% {
+            opacity: 0.7;
+            transform: translateX(-10px);
+          }
+          50% {
+            transform: translateX(5px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        .animate-bounce {
+          animation: bounce 1s infinite;
+        }
+        .animate-slide-in {
+          animation: slideIn 0.6s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
