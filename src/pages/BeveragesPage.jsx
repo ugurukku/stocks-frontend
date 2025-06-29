@@ -31,7 +31,7 @@ useEffect(() => {
     onConnect: () => {
       console.log("STOMP connected");
       setConnectionStatus('connected');
-      client.subscribe("/topic/beers", (message) => {
+      client.subscribe("/topic/beverages", (message) => {
         const updatedBeer = JSON.parse(message.body);
         setBeers(prevBeers => {
           const index = prevBeers.findIndex(b => 
