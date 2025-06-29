@@ -19,25 +19,33 @@ function BeveragesPage() {
     navigate(`/${id}/purchase`);
   };
 
+  const fetchBeers = async () => {
+    try {
+      const response = await fetch("http://localhost:8080/v1/beverages");
+      const data = await response.json();
+
+      // Sort by price descending when initially fetching
+      const sortedData = data.sort((a, b) => b.price - a.price);
+      setBeers(sortedData);
+
+      // Initialize previous prices and positions
+      const initialPrices = {};
+      const initialPositions = {};
+      sortedData.forEach((beer, index) => {
+        const beerId = beer.id || beer.symbol;
+        initialPrices[beerId] = beer.price;
+        initialPositions[beerId] = index;
+      });
+      previousPrices.current = initialPrices;
+      previousPositions.current = initialPositions;
+    } catch (err) {
+      console.error("Failed to fetch beers", err);
+    }
+  };
+
   useEffect(() => {
-    fetch("http://localhost:8080/v1/beverages")
-      .then(res => res.json())
-      .then(data => {
-        // Sort by price descending when initially fetching
-        const sortedData = data.sort((a, b) => b.price - a.price);
-        setBeers(sortedData);
-        // Initialize previous prices and positions
-        const initialPrices = {};
-        const initialPositions = {};
-        sortedData.forEach((beer, index) => {
-          const beerId = beer.id || beer.symbol;
-          initialPrices[beerId] = beer.price;
-          initialPositions[beerId] = index;
-        });
-        previousPrices.current = initialPrices;
-        previousPositions.current = initialPositions;
-      })
-      .catch(err => console.error("Failed to fetch beers", err));
+    // Initial fetch
+    fetchBeers();
 
     const client = new Client({
       brokerURL: "ws://localhost:8080/ws",
@@ -45,14 +53,18 @@ function BeveragesPage() {
       onConnect: () => {
         console.log("STOMP connected");
         setConnectionStatus('connected');
+
+        // Refetch beverages when reconnecting to sync with current state
+        fetchBeers();
+
         client.subscribe("/topic/beverages", (message) => {
           const updatedBeer = JSON.parse(message.body);
           const beerId = updatedBeer.id || updatedBeer.symbol;
-          
+
           // Check for price change
           const oldPrice = previousPrices.current[beerId];
           const newPrice = updatedBeer.price;
-          
+
           if (oldPrice !== undefined && oldPrice !== newPrice) {
             setPriceChanges(prev => ({
               ...prev,
@@ -61,7 +73,7 @@ function BeveragesPage() {
                 timestamp: Date.now()
               }
             }));
-            
+
             // Clear the animation after 3 seconds
             setTimeout(() => {
               setPriceChanges(prev => {
@@ -71,18 +83,18 @@ function BeveragesPage() {
               });
             }, 3000);
           }
-          
+
           // Update previous price
           previousPrices.current[beerId] = newPrice;
-          
+
           setBeers(prevBeers => {
-            const index = prevBeers.findIndex(b => 
-              (b.id && b.id === updatedBeer.id) || 
+            const index = prevBeers.findIndex(b =>
+              (b.id && b.id === updatedBeer.id) ||
               (b.symbol && b.symbol === updatedBeer.symbol) ||
               (b.name && b.name === updatedBeer.name)
             );
             let updatedBeers;
-            
+
             if (index !== -1) {
               // Update existing beer
               updatedBeers = [...prevBeers];
@@ -91,16 +103,16 @@ function BeveragesPage() {
               // Add new beer
               updatedBeers = [...prevBeers, updatedBeer];
             }
-            
+
             // Sort by price descending after each update
             const sortedBeers = updatedBeers.sort((a, b) => b.price - a.price);
-            
+
             // Track position changes
             const newPositionChanges = {};
             sortedBeers.forEach((beer, newIndex) => {
               const beerId = beer.id || beer.symbol;
               const oldPosition = previousPositions.current[beerId];
-              
+
               if (oldPosition !== undefined && oldPosition !== newIndex) {
                 newPositionChanges[beerId] = {
                   from: oldPosition,
@@ -108,21 +120,21 @@ function BeveragesPage() {
                   direction: newIndex < oldPosition ? 'up' : 'down'
                 };
               }
-              
+
               // Update previous position
               previousPositions.current[beerId] = newIndex;
             });
-            
+
             // Set position changes
             if (Object.keys(newPositionChanges).length > 0) {
               setPositionChanges(newPositionChanges);
-              
+
               // Clear position changes after animation completes
               setTimeout(() => {
                 setPositionChanges({});
               }, 600);
             }
-            
+
             return sortedBeers;
           });
         });
@@ -135,6 +147,14 @@ function BeveragesPage() {
         console.log("STOMP disconnected");
         setConnectionStatus('connecting');
       },
+      onWebSocketClose: () => {
+        console.log("WebSocket connection closed");
+        setConnectionStatus('connecting');
+      },
+      onWebSocketError: (error) => {
+        console.error("WebSocket error", error);
+        setConnectionStatus('error');
+      }
     });
 
     client.activate();
@@ -156,7 +176,7 @@ function BeveragesPage() {
   };
 
   const getConnectionStatusColor = () => {
-    switch(connectionStatus) {
+    switch (connectionStatus) {
       case 'connected': return 'bg-green-500';
       case 'error': return 'bg-red-500';
       default: return 'bg-amber-500';
@@ -164,7 +184,7 @@ function BeveragesPage() {
   };
 
   const getConnectionStatusText = () => {
-    switch(connectionStatus) {
+    switch (connectionStatus) {
       case 'connected': return 'Fresh';
       case 'error': return 'Error';
       default: return 'Brewing...';
@@ -203,7 +223,7 @@ function BeveragesPage() {
               </svg>
               <span>Back to Home</span>
             </button>
-            
+
             {/* Connection Status */}
             <div className="flex items-center space-x-2 bg-amber-600/20 backdrop-blur-md px-4 py-2 rounded-xl border border-amber-400/30">
               <div className={`w-2 h-2 rounded-full ${getConnectionStatusColor()} animate-pulse`}></div>
@@ -297,7 +317,7 @@ function BeveragesPage() {
                   const beerId = beer.id || beer.symbol;
                   const priceChange = priceChanges[beerId];
                   const positionChange = positionChanges[beerId];
-                  
+
                   let animationStyle = {};
                   if (positionChange) {
                     const moveDistance = (positionChange.to - positionChange.from) * 88; // Approximate row height
@@ -308,23 +328,21 @@ function BeveragesPage() {
                       zIndex: 10
                     };
                   }
-                  
+
                   return (
                     <tr
                       key={beer.id}
-                      className={`group hover:bg-amber-500/10 transition-all duration-300 transform hover:scale-[1.01] ${
-                        positionChange ? 'bg-amber-500/20' : ''
-                      }`}
+                      className={`group hover:bg-amber-500/10 transition-all duration-300 transform hover:scale-[1.01] ${positionChange ? 'bg-amber-500/20' : ''
+                        }`}
                       style={animationStyle}
                     >
                       <td className="py-6 px-8">
                         <div className="flex items-center space-x-3">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm transition-all duration-300 ${
-                            index === 0 ? 'bg-yellow-500 text-yellow-900' :
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm transition-all duration-300 ${index === 0 ? 'bg-yellow-500 text-yellow-900' :
                             index === 1 ? 'bg-gray-400 text-gray-900' :
-                            index === 2 ? 'bg-amber-600 text-amber-100' :
-                            'bg-amber-500/30 text-amber-100'
-                          }`}>
+                              index === 2 ? 'bg-amber-600 text-amber-100' :
+                                'bg-amber-500/30 text-amber-100'
+                            }`}>
                             {index + 1}
                           </div>
                           {index < 3 && (
@@ -333,12 +351,11 @@ function BeveragesPage() {
                             </span>
                           )}
                           {positionChange && (
-                            <div className={`ml-2 flex items-center text-sm font-medium ${
-                              positionChange.direction === 'up' ? 'text-green-400' : 'text-red-400'
-                            }`}>
-                              <svg 
-                                className={`w-4 h-4 ${positionChange.direction === 'down' ? 'rotate-180' : ''}`} 
-                                fill="currentColor" 
+                            <div className={`ml-2 flex items-center text-sm font-medium ${positionChange.direction === 'up' ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                              <svg
+                                className={`w-4 h-4 ${positionChange.direction === 'down' ? 'rotate-180' : ''}`}
+                                fill="currentColor"
                                 viewBox="0 0 20 20"
                               >
                                 <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -369,12 +386,11 @@ function BeveragesPage() {
                           <div className="text-amber-100 font-mono text-xl font-bold flex items-center justify-end space-x-2">
                             <span>{formatPrice(beer.price)}</span>
                             {priceChange && (
-                              <div className={`flex items-center animate-bounce ${
-                                priceChange.direction === 'up' ? 'text-green-400' : 'text-red-400'
-                              }`}>
-                                <svg 
-                                  className={`w-5 h-5 ${priceChange.direction === 'down' ? 'rotate-180' : ''}`} 
-                                  fill="currentColor" 
+                              <div className={`flex items-center animate-bounce ${priceChange.direction === 'up' ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                <svg
+                                  className={`w-5 h-5 ${priceChange.direction === 'down' ? 'rotate-180' : ''}`}
+                                  fill="currentColor"
                                   viewBox="0 0 20 20"
                                 >
                                   <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
